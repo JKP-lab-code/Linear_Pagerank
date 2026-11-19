@@ -5,7 +5,7 @@ import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 
-# ตั้งค่าฟอนต์เริ่มต้นของ Matplotlib เพื่อรองรับภาษาไทย (หากระบบมีฟอนต์ติดตั้งอยู่) และเครื่องหมายคณิตศาสตร์
+# ตั้งค่าฟอนต์เริ่มต้นของ Matplotlib เพื่อรองรับภาษาไทยและเครื่องหมายคณิตศาสตร์
 plt.rcParams['font.sans-serif'] = [
     'Tahoma', 'Leelawadee UI', 'Sarabun', 'TH Sarabun New', 'Ayuthaya', 'DejaVu Sans'
 ]
@@ -22,22 +22,14 @@ def build_link_matrix(edges, n, node_list):
     [M2] สร้าง Link Matrix (L) ขนาด n x n จากรายการลิงก์ (edges)
     
     หลักการทางคณิตศาสตร์และ Eigenvalue:
-    - กำหนดให้ คอลัมน์ j คือ "หน้าต้นทาง (Source)" และ แถว i คือ "หน้าปลายทาง (Destination)"
-    - สมาชิก L[i, j] แทนสัดส่วนคะแนนโหวตที่หน้า j แบ่งให้หน้า i (Transpose จาก Adjacency Matrix ปกติ)
-    - यदिหน้า j มีลิงก์ออกทั้งหมด out_degrees[j] เส้น จะแบ่งคะแนนให้หน้าปลายทางเส้นละ 1 / out_degrees[j]
-    - ส่งผลให้ผลรวมของแต่ละคอลัมน์เท่ากับ 1 (Column-stochastic matrix) เมื่อไม่มีหน้าทางตัน
-    - สมการสมดุลของคะแนนความสำคัญคือ Lx = 1*x ซึ่งหมายความว่าเวกเตอร์คะแนน x คือ Eigenvector ของ L ที่ λ = 1
+    - คอลัมน์ j = หน้าต้นทาง (Source), แถว i = หน้าปลายทาง (Destination) -> L[i, j]
+    - ผลรวมของแต่ละคอลัมน์เท่ากับ 1 (Column-stochastic matrix) เมื่อไม่มีหน้าทางตัน
+    - สมการสมดุลคือ Lx = 1*x (เวกเตอร์คะแนน x คือ Eigenvector ของ L ที่ λ = 1)
     """
-    # สร้าง Dictionary แปลงชื่อโหนดเป็นดัชนี (Index 0 ถึง n-1)
     node_to_idx = {node: idx for idx, node in enumerate(node_list)}
-    
-    # สร้างเมทริกซ์ศูนย์ขนาด n x n สำหรับเก็บค่า Link Matrix L
     L = np.zeros((n, n), dtype=float)
-    
-    # เวกเตอร์เก็บจำนวนลิงก์ออก (Out-degree) ของแต่ละโหนด
     out_degrees = np.zeros(n, dtype=float)
     
-    # กรองลิงก์ซ้ำออกเพื่อให้การแบ่งสัดส่วนคะแนนโหวตของแต่ละหน้าต้นทางคงที่และแม่นยำ
     unique_edges = []
     seen = set()
     for u, v in edges:
@@ -46,15 +38,13 @@ def build_link_matrix(edges, n, node_list):
                 seen.add((u, v))
                 unique_edges.append((u, v))
     
-    # นับจำนวนลิงก์ออกทั้งหมดของแต่ละหน้าต้นทาง j
     for u, v in unique_edges:
-        j = node_to_idx[u]  # คอลัมน์ j = หน้าต้นทาง
+        j = node_to_idx[u]
         out_degrees[j] += 1.0
         
-    # กำหนดค่าลงใน L[i, j] (แถว i = ปลายทาง, คอลัมน์ j = ต้นทาง)
     for u, v in unique_edges:
-        j = node_to_idx[u]  # คอลัมน์ (ต้นทาง)
-        i = node_to_idx[v]  # แถว (ปลายทาง)
+        j = node_to_idx[u]
+        i = node_to_idx[v]
         if out_degrees[j] > 0:
             L[i, j] = 1.0 / out_degrees[j]
             
@@ -64,21 +54,11 @@ def build_link_matrix(edges, n, node_list):
 def fix_dangling(L, out_degrees):
     """
     [M2] ตรวจหาและแก้ไขปัญหาหน้าทางตัน (Dangling Nodes) เพื่อสร้างเมทริกซ์ L_hat
-    
-    หลักการทางคณิตศาสตร์และ Eigenvalue:
-    - หน้าทางตันคือหน้าที่ไม่มีลิงก์ออกเลย (out_degrees[j] == 0) ทำให้คอลัมน์ที่ j ของ L เป็น 0 ทั้งคอลัมน์
-    - หากรัน Power Iteration บน L ที่มีคอลัมน์ศูนย์ คะแนนรวมจะรั่วไหลและลดลงเรื่อยๆ (λ หลักมีค่าน้อยกว่า 1)
-    - วิธีแก้ของ Google คือสมมติให้คนท่องเว็บที่ติดหน้าทางตันสุ่มกระโดดไปทุกหน้าด้วยความน่าจะเป็นเท่ากันคือ 1/n
-    - เมื่อแทนคอลัมน์ที่เป็นศูนย์ด้วย 1/n ทุกช่อง จะได้เมทริกซ์ L_hat ที่ผลรวมทุกคอลัมน์เท่ากับ 1 เสมอ
-    - ตามสมบัติของ Column-stochastic matrix จะรับประกันทันทีว่า λ = 1 เป็น Eigenvalue ของ L_hat เสมอ
     """
     n = L.shape[0]
     L_hat = L.copy()
-    
-    # หาตำแหน่งดัชนีของโหนดที่มีจำนวนลิงก์ออกเป็น 0 (หน้าทางตัน)
     dangling_mask = (out_degrees == 0)
     
-    # แทนที่คอลัมน์ของหน้าทางตันทุกช่องด้วยค่า 1/n เพื่อรักษาผลรวมคอลัมน์ให้เท่ากับ 1
     if np.any(dangling_mask):
         L_hat[:, dangling_mask] = 1.0 / n
         
@@ -88,22 +68,9 @@ def fix_dangling(L, out_degrees):
 def google_matrix(L_hat, d, n):
     """
     [M3] คำนวณ Google Matrix (G) จากเมทริกซ์ L_hat และค่า Damping Factor (d)
-    
-    หลักการทางคณิตศาสตร์และ Eigenvalue:
-    - แม้ L_hat จะแก้หน้าทางตันแล้ว แต่กราฟอาจยังมี "เกาะแยก (Disconnected components)" ที่ทำให้ λ = 1 ซ้ำหลายตัว
-      (Geometric multiplicity > 1) หรือมี "วงวน (Cycles)" ที่ทำให้มี |λ| = 1 ตัวอื่นบนวงกลมหนึ่งหน่วย จนไม่ลู่เข้า
-    - การผสมด้วยพจน์สุ่มกระโดดวาร์ป ((1 - d) / n) * 11^T สร้าง Google Matrix:
-      G = d * L_hat + ((1 - d) / n) * np.ones((n, n))
-    - เมทริกซ์ G มีสมาชิกทุกตัวเป็นบวกแท้ (G_ij > 0) และผลรวมทุกคอลัมน์เท่ากับ 1
-    - ตามทฤษฎีบท Perron-Frobenius:
-      1) λ_1 = 1 เป็น Eigenvalue ค่าจริงบวกที่มีขนาดใหญ่ที่สุดเพียงตัวเดียว (Simple eigenvalue)
-      2) Eigenvalue ตัวอื่นๆ ของ G จะถูกบีบขนาดลงด้วยอัตราส่วน d คือ λ_i(G) = d * λ_i(L_hat) สำหรับ i >= 2
-      3) ดังนั้น |λ_2(G)| <= d < 1 เสมอ รับประกันว่า Power Iteration ลู่เข้าหาคำตอบเดียวแน่นอน
+    ตามสมการ G = d * L_hat + ((1 - d) / n) * 11^T
     """
-    # สร้างเมทริกซ์ที่ทุกช่องมีค่าเป็น 1 ขนาด n x n (แทน 11^T)
     ones_matrix = np.ones((n, n), dtype=float)
-    
-    # คำนวณ Google Matrix ตามสมการ G = d * L_hat + ((1 - d) / n) * 11^T
     G = d * L_hat + ((1.0 - d) / n) * ones_matrix
     return G
 
@@ -111,19 +78,8 @@ def google_matrix(L_hat, d, n):
 def power_step(G, x):
     """
     [M5] คำนวณ Power Iteration ก้าวต่อไป 1 รอบ: x_{k+1} = G @ x_k
-    
-    หลักการทางคณิตศาสตร์และ Eigenvalue:
-    - จากการแยกตัวประกอบเมทริกซ์ G = P D P^{-1} เมื่อกระจายเวกเตอร์เริ่มต้น x_0 ในฐานของ Eigenvector:
-      x_0 = c_1 * v_1 + c_2 * v_2 + ... + c_n * v_n
-    - เมื่อคูณ G ซ้ำ k รอบ:
-      x_k = G^k x_0 = P D^k P^{-1} x_0 = c_1 (1)^k v_1 + c_2 (λ_2)^k v_2 + ... + c_n (λ_n)^k v_n
-    - เนื่องจาก |λ_i| <= |λ_2| <= d < 1 สำหรับทุก i >= 2 พจน์ชั่วคราว (Transient terms) จึงหดตัวเข้าใกล้ 0
-      ด้วยอัตราเร็วที่ถูกควบคุมโดย |λ_2|^k เหลือรอดเพียงส่วนของ v_1 (ซึ่งสมนัยกับ λ_1 = 1)
     """
-    # คูณเมทริกซ์ G กับเวกเตอร์สถานะปัจจุบัน x
     x_next = G @ x
-    
-    # ปรับให้ผลรวมเป็น 1 เสมอเพื่อป้องกันความคลาดเคลื่อนของการปัดเศษทศนิยม (Floating-point drift)
     x_next = x_next / np.sum(x_next)
     return x_next
 
@@ -131,31 +87,14 @@ def power_step(G, x):
 def eigen_pagerank(G):
     """
     [M4, M7] คำนวณหาค่า PageRank โดยตรงด้วย Eigen-decomposition (Gx = λx ที่ λ = 1)
-    
-    หลักการทางคณิตศาสตร์และ Eigenvalue:
-    - แก้สมการ Gx = λx ด้วย np.linalg.eig(G) เพื่อดึง Eigenvalues ทั้งหมดและ Eigenvectors
-    - ค้นหาดัชนีของ Eigenvalue ที่มีค่าใกล้เคียง λ = 1.0 มากที่สุด (Dominant eigenvalue λ_1 = 1)
-    - ดึงคอลัมน์ Eigenvector ที่สมนัยกันออกมา ตัดเอาเฉพาะส่วนจริง (.real)
-    - นำไปหารด้วยผลรวมของตัวเอง (pi / pi.sum()) เพื่อปรับสเกลให้ผลรวมความน่าจะเป็นเท่ากับ 1 และเป็นบวกเสมอ
-    - คำนวณหา |λ_2| (ขนาดของ Eigenvalue ที่ใหญ่อันดับสอง) เพื่อใช้วิเคราะห์อัตราการลู่เข้า
     """
-    # คำนวณหา Eigenvalues (lam) และเมทริกซ์ของ Eigenvectors (P)
     lam, P = np.linalg.eig(G)
-    
-    # ค้นหาตำแหน่ง index ของ Eigenvalue ที่อยู่ใกล้ 1.0 ที่สุดบนระนาบเชิงซ้อน
     idx_1 = np.argmin(np.abs(lam - 1.0))
-    
-    # ดึง Eigenvector คอลัมน์ที่สมนัยกับ λ = 1 และเอาเฉพาะส่วนจริง (.real)
     v1_real = P[:, idx_1].real
-    
-    # หารด้วยผลรวมของตัวเอง เพื่อให้คะแนนรวมทุกหน้าเท่ากับ 1 เสมอ (และกลับเครื่องหมายอัตโนมัติหากติดลบทั้งเวกเตอร์)
     pi = v1_real / np.sum(v1_real)
-    
-    # บังคับค่าศูนย์หากมีค่าติดลบขนาดจิ๋วระดับเครื่องหมายทศนิยม (เช่น -1e-17) แล้วปรับผลรวมอีกครั้ง
     pi = np.maximum(pi, 0.0)
     pi = pi / np.sum(pi)
     
-    # เรียงลำดับขนาด |λ| จากน้อยไปมาก เพื่อดึงค่าใหญ่อันดับสอง |λ_2|
     abs_lam_sorted = np.sort(np.abs(lam))
     lam2_abs = float(abs_lam_sorted[-2]) if len(abs_lam_sorted) >= 2 else 0.0
     
@@ -185,7 +124,7 @@ SAMPLE_GRAPHS = {
         "Prog1,DataStruct\nProg1,DataSci\nDataStruct,Algo\nDataStruct,ML\n"
         "ProbStat,ML\nProbStat,DataSci\nAlgo,Optimiz\nAlgo,DeepLearn\n"
         "ML,DeepLearn\nDataSci,ML\nOptimiz,ML\nDiffEq,Optimiz",
-        "ข้อมูลจริงของกลุ่ม (12 รายวิชา): โครงข่ายการอ้างอิงความรู้ระหว่างวิชาในสายวิทยาการข้อมูลและ AI (วิชาพื้นฐานชี้ไปยังวิชาขั้นสูงที่ต้องใช้ความรู้นั้นต่อยอด)"
+        "ข้อมูลจริงของกลุ่ม (12 รายวิชา): โครงข่ายการอ้างอิงความรู้ระหว่างวิชาในสายวิทยาการข้อมูลและ AI"
     )
 }
 
@@ -200,7 +139,6 @@ def parse_edges_from_text(raw_text):
             continue
         parts = [p.strip() for p in line.split(",")]
         if len(parts) >= 2 and parts[0] and parts[1]:
-            # ข้าม header หากผู้ใช้เผลอใส่คำว่า from,to
             if parts[0].lower() == "from" and parts[1].lower() == "to":
                 continue
             u, v = parts[0], parts[1]
@@ -227,10 +165,10 @@ def reset_power_iteration(n, G, pi):
 
 st.set_page_config(
     page_title="PageRank Lab · SCMA 251",
+    page_icon="🕸️",
     layout="wide"
 )
 
-# กำหนดค่าเริ่มต้นใน st.session_state
 if "edges_text" not in st.session_state:
     st.session_state.edges_text = SAMPLE_GRAPHS["หน้าทางตัน"][0]
 if "sample_desc" not in st.session_state:
@@ -244,7 +182,6 @@ if "state_signature" not in st.session_state:
 with st.sidebar:
     st.markdown("### 🕸️ กราฟลิงก์ (`from,to`) [M1]")
     
-    # ปุ่มโหลดกราฟตัวอย่าง 4 รูปแบบตามที่กำหนด
     st.caption("**เลือกโหลดกราฟตัวอย่าง:**")
     btn_col1, btn_col2 = st.columns(2)
     with btn_col1:
@@ -266,22 +203,19 @@ with st.sidebar:
             st.session_state.sample_desc = SAMPLE_GRAPHS["ข้อมูลของกลุ่ม"][1]
             st.rerun()
 
-    # File Uploader สำหรับอัปโหลดไฟล์ CSV
     uploaded_file = st.file_uploader(
-        "อัปโหลดไฟล์ CSV (คอลัมน์ `from,to` รองรับ 3–20+ หน้า)",
+        "อัปโหลดไฟล์ CSV (คอลัมน์ `from,to` รองรับ 3–30 หน้า)",
         type=["csv"]
     )
     if uploaded_file is not None:
         try:
-            content = uploaded_file.getvalue().decode("utf-8")
+            content = uploaded_file.getvalue().decode("utf-8-sig")
             df_csv = pd.read_csv(io.StringIO(content))
             if {"from", "to"}.issubset(set(df_csv.columns.str.lower())):
-                # ดึงตามชื่อคอลัมน์ไม่ว่าจะพิมพ์เล็กหรือใหญ่
                 col_map = {c.lower(): c for c in df_csv.columns}
                 u_col, v_col = col_map["from"], col_map["to"]
                 lines = [f"{row[u_col]},{row[v_col]}" for _, row in df_csv.iterrows()]
             else:
-                # กรณีไม่มี header ใช้ 2 คอลัมน์แรก
                 df_csv_no_hdr = pd.read_csv(io.StringIO(content), header=None)
                 lines = [f"{row[0]},{row[1]}" for _, row in df_csv_no_hdr.iterrows()]
             csv_text = "\n".join(lines)
@@ -292,7 +226,6 @@ with st.sidebar:
         except Exception as e:
             st.error(f"ไม่สามารถอ่านไฟล์ CSV ได้: {e}")
 
-    # ช่อง Text Area สำหรับกรอกหรือแก้ไขลิงก์โดยตรง
     edges_input = st.text_area(
         "รายการลิงก์ (บรรทัดละ 1 ลิงก์ รูปแบบ `ต้นทาง,ปลายทาง`):",
         value=st.session_state.edges_text,
@@ -302,7 +235,6 @@ with st.sidebar:
         st.session_state.edges_text = edges_input
         st.session_state.sample_desc = "กำหนดข้อมูลกราฟเองผ่านช่องข้อความ"
 
-    # แปลงข้อมูลลิงก์เป็นโหนดและเมทริกซ์
     edges, node_list = parse_edges_from_text(st.session_state.edges_text)
     n = len(node_list)
 
@@ -310,12 +242,10 @@ with st.sidebar:
         st.error("กรุณากรอกข้อมูลลิงก์อย่างน้อย 2–3 หน้าขึ้นไป (รูปแบบ `A,B`)")
         st.stop()
 
-    # คำนวณ Link Matrix L และตรวจหาหน้าทางตัน [M2]
     L, out_degrees = build_link_matrix(edges, n, node_list)
     L_hat, dangling_mask = fix_dangling(L, out_degrees)
     dangling_nodes = [node_list[i] for i in range(n) if dangling_mask[i]]
 
-    # แจ้งเตือนหน้าทางตันบนหน้าจอทันทีหากตรวจพบ [M2]
     if dangling_nodes:
         st.warning(
             f"⚠️ **พบหน้าทางตัน (Dangling Node):** `{', '.join(dangling_nodes)}` "
@@ -325,7 +255,6 @@ with st.sidebar:
         st.success("✅ ไม่พบหน้าทางตัน ทุกหน้ามีลิงก์ออก ($L = \\hat{L}$) [M2]")
 
     st.markdown("---")
-    # [M3] Slider ปรับค่า Damping Factor d
     st.markdown("### 🎚️ Damping Factor $d$ [M3]")
     d = st.slider(
         "ปรับโอกาสกดตามลิงก์ปกติ ($d$):",
@@ -336,18 +265,15 @@ with st.sidebar:
         help="โอกาส d ที่คนท่องเว็บจะคลิกลิงก์ในหน้าปัจจุบัน และโอกาส (1-d) ที่จะสุ่มกระโดดวาร์ปไปหน้าใดก็ได้"
     )
 
-    # สร้าง Google Matrix G และหา Eigenvector ทันทีเมื่อเลื่อน Slider [M3, M4]
     G = google_matrix(L_hat, d, n)
     pi, eigvals, lam2_abs = eigen_pagerank(G)
 
-    # ตรวจสอบว่ากราฟหรือค่า d มีการเปลี่ยนแปลงหรือไม่ เพื่อรีเซ็ตหรือซิงค์ st.session_state
     current_signature = (tuple(edges), tuple(node_list), round(d, 4))
     if st.session_state.state_signature != current_signature:
         reset_power_iteration(n, G, pi)
         st.session_state.state_signature = current_signature
 
     st.markdown("---")
-    # [M5] แผงควบคุม Power Iteration
     st.markdown("### ⚡ Power Iteration [M5]")
     p_col1, p_col2 = st.columns(2)
     with p_col1:
@@ -361,7 +287,6 @@ with st.sidebar:
 
     with p_col2:
         if st.button("⏩ รันจนลู่เข้า", use_container_width=True):
-            # วนลูปคูณ G @ x ซ้ำจนกว่า error < 1e-6 หรือครบ 1000 รอบ
             while st.session_state.k < 1000:
                 curr_err = float(np.linalg.norm(st.session_state.x_k - pi, ord=2))
                 if curr_err < 1e-6 and st.session_state.k > 0:
@@ -391,36 +316,40 @@ with st.sidebar:
 # ------------------------------------------------------------------------------
 st.title("PageRank Lab")
 st.caption(
-    f" "
-    f""
+    f"**แนวคิดหลัก:** คะแนนความสำคัญของหน้าเว็บ = Eigenvector ของเมทริกซ์ $G$ ที่สมนัยกับ $\\lambda = 1$ "
+    f"($G\\vec{{\\pi}} = 1\\cdot\\vec{{\\pi}}$) · **ข้อมูลปัจจุบัน:** {st.session_state.sample_desc}"
 )
 
-# แถวบน: (1) กราฟโครงข่าย [M1, M7] และ (2) ตารางเปรียบเทียบอันดับ [M7]
 top_col1, top_col2 = st.columns([1.15, 1.0], gap="medium")
 
 with top_col1:
     with st.container(border=True):
         st.subheader("(1) โครงข่ายกราฟลิงก์ (ขนาดโหนด = คะแนน PageRank) [M1, M7]")
         
-        # สร้างกราฟแบบมีทิศทางด้วย networkx (ใช้สำหรับการวาดภาพเท่านั้นตามกฎเหล็ก)
+        layout_mode = st.radio(
+            "รูปแบบการจัดวางโหนด:",
+            ["กระจายตัวอัตโนมัติ (Spring Layout)", "เรียงเป็นวงกลม (Circular Layout — ไม่ซ้อนทับแน่นอน)"],
+            horizontal=True
+        )
+
         DG = nx.DiGraph()
         DG.add_nodes_from(node_list)
         DG.add_edges_from(edges)
 
-        fig_g, ax_g = plt.subplots(figsize=(6.5, 4.8), dpi=110)
+        fig_g, ax_g = plt.subplots(figsize=(8.5, 6.5), dpi=120)
         
-        # จัดวางตำแหน่งโหนดให้สวยงามตามลักษณะกราฟ
-        if n <= 8:
-            pos = nx.kamada_kawai_layout(DG)
+        if "Circular" in layout_mode:
+            pos = nx.circular_layout(DG)
         else:
-            pos = nx.spring_layout(DG, k=1.3 / np.sqrt(n), seed=42, iterations=80)
+            pos = nx.spring_layout(DG, k=3.2 / np.sqrt(n), seed=42, iterations=200)
 
-        # ใช้คะแนนปัจจุบันจาก Power Iteration (x_k) มาปรับขนาดโหนดให้เห็นการเปลี่ยนแปลงแต่ละรอบ
         scores_for_size = st.session_state.x_k
         max_score = np.max(scores_for_size) if np.max(scores_for_size) > 0 else 1.0
-        node_sizes = [600 + 2600 * (s / max_score) for s in scores_for_size]
+        if n > 8:
+            node_sizes = [320 + 1300 * (s / max_score) for s in scores_for_size]
+        else:
+            node_sizes = [600 + 2400 * (s / max_score) for s in scores_for_size]
 
-        # แยกสีและเส้นขอบ: หน้าทางตันใช้สีชมพูอ่อนขอบประ โหนดที่มีคะแนนสูงสุดใช้สีส้มอ่อน โหนดทั่วไปสีฟ้าอ่อน
         top_node_idx = int(np.argmax(scores_for_size))
         node_colors = []
         edge_colors = []
@@ -435,7 +364,6 @@ with top_col1:
                 node_colors.append("#D6EAF8")
                 edge_colors.append("#2874A6")
 
-        # วาดโหนดปกติและโหนดหน้าทางตันแยกกันเพื่อให้หน้าทางตันแสดงขอบเส้นประชัดเจน
         normal_indices = [i for i in range(n) if not dangling_mask[i]]
         dangling_indices = [i for i in range(n) if dangling_mask[i]]
 
@@ -459,35 +387,40 @@ with top_col1:
                 linewidths=2.0,
                 ax=ax_g
             )
-            # ตั้งค่าเส้นประให้กับหน้าทางตัน
             ax_g.collections[-1].set_linestyle("--")
 
-        # วาดป้ายชื่อโหนดพร้อมคะแนน
-        labels = {node_list[i]: f"{node_list[i]}\n({scores_for_size[i]:.3f})" for i in range(n)}
+        labels = {}
+        for i in range(n):
+            name = node_list[i]
+            if len(name) > 22 and " " in name:
+                name = name.replace(" ", "\n", 1)
+            labels[node_list[i]] = f"{name}\n({scores_for_size[i]:.3f})"
+
         nx.draw_networkx_labels(
             DG, pos,
             labels=labels,
-            font_size=9 if n <= 10 else 7.5,
+            font_size=9.0 if n <= 8 else 7.0,
             font_weight="bold",
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.65),
             ax=ax_g
         )
 
-        # วาดเส้นเชื่อมพร้อมหัวลูกศรโค้งเล็กน้อยเพื่อให้เห็นลิงก์สวนทางกัน (เช่น A->C และ C->A) ได้ชัดเจน
         nx.draw_networkx_edges(
             DG, pos,
             edgelist=list(DG.edges()),
             edge_color="#34495E",
             arrows=True,
             arrowstyle="-|>",
-            arrowsize=18,
-            width=1.6,
+            arrowsize=15 if n > 8 else 18,
+            width=1.3 if n > 8 else 1.6,
+            alpha=0.75,
             connectionstyle="arc3,rad=0.12",
             node_size=node_sizes,
             ax=ax_g
         )
 
         ax_g.set_axis_off()
-        ax_g.margins(0.15)
+        ax_g.margins(0.25)
         fig_g.tight_layout()
         st.pyplot(fig_g)
         plt.close(fig_g)
@@ -500,7 +433,6 @@ with top_col2:
     with st.container(border=True):
         st.subheader("(2) ตารางอันดับ: เปรียบเทียบ 2 วิธีต้องตรงกัน [M5, M7]")
         
-        # สร้าง DataFrame เปรียบเทียบค่าจาก Power Iteration (x_k) และ Eigenvector (pi)
         df_rank = pd.DataFrame({
             "หน้า (Node)": node_list,
             f"Power Iter. (x_k, k={st.session_state.k})": st.session_state.x_k,
@@ -509,7 +441,6 @@ with top_col2:
             "ลิงก์ออก (Out)": out_degrees.astype(int)
         })
         
-        # เรียงลำดับตามคะแนน Eigenvector จากมากไปน้อย
         df_rank = df_rank.sort_values(by="Eigenvector (λ = 1)", ascending=False).reset_index(drop=True)
         df_rank.index = df_rank.index + 1
         df_rank.index.name = "อันดับ"
@@ -521,7 +452,7 @@ with top_col2:
                 "ผลต่าง |x_k - π|": "{:.2e}"
             }),
             use_container_width=True,
-            height=290
+            height=330
         )
 
         max_diff = float(np.max(np.abs(st.session_state.x_k - pi)))
@@ -533,7 +464,6 @@ with top_col2:
                 f"กด **'ก้าวไป 1 รอบ'** หรือ **'รันจนลู่เข้า'** ที่แถบซ้ายเพื่อดู $\\vec{{x}}_k$ ลู่เข้าหา $\\vec{{\\pi}}$"
             )
 
-        # แสดงเวกเตอร์ x_k ปัจจุบันในรูปแบบพร้อมคัดลอกหรือตรวจสอบ [M5]
         with st.expander(f"🔎 ดูเวกเตอร์ปัจจุบัน x_k (รอบที่ k = {st.session_state.k}) และค่าผลรวม"):
             vec_df = pd.DataFrame([st.session_state.x_k], columns=node_list, index=[f"x_{st.session_state.k}"])
             st.dataframe(vec_df.style.format("{:.6f}"), use_container_width=True)
@@ -550,15 +480,12 @@ with bot_col1:
         fig_eig, ax_eig = plt.subplots(figsize=(5.5, 4.5), dpi=110)
         theta = np.linspace(0, 2 * np.pi, 300)
         
-        # วาดวงกลมรัศมี 1 (|λ| = 1) และวงกลมรัศมี d (|λ| = d)
         ax_eig.plot(np.cos(theta), np.sin(theta), linestyle="--", color="#7F8C8D", linewidth=1.3, label=r"$|\lambda| = 1$")
         ax_eig.plot(d * np.cos(theta), d * np.sin(theta), linestyle="--", color="#8E44AD", linewidth=1.5, label=rf"$|\lambda| = d = {d:.2f}$")
 
-        # วาดแกน Re และ Im ผ่านจุดกำเนิด
         ax_eig.axhline(0, color="#BDC3C7", linewidth=1.0, zorder=1)
         ax_eig.axvline(0, color="#BDC3C7", linewidth=1.0, zorder=1)
 
-        # แยกจุด λ_1 = 1 กับ Eigenvalue ตัวอื่นๆ เพื่อพล็อตคนละสีให้ชัดเจน
         idx_1 = int(np.argmin(np.abs(eigvals - 1.0)))
         other_mask = np.ones(len(eigvals), dtype=bool)
         other_mask[idx_1] = False
@@ -591,7 +518,6 @@ with bot_col1:
         st.pyplot(fig_eig)
         plt.close(fig_eig)
 
-        # แสดงค่า |λ_2| บนหน้าจอชัดเจนตามข้อกำหนด [M4]
         m_c1, m_c2, m_c3 = st.columns(3)
         m_c1.metric("Dominant λ₁", "1.0000")
         m_c2.metric("ขนาด |λ₂|", f"{lam2_abs:.4f}")
@@ -605,10 +531,8 @@ with bot_col2:
         
         k_vals = np.arange(len(st.session_state.error_history))
         err_vals = np.array(st.session_state.error_history, dtype=float)
-        # ป้องกัน log(0) ด้วยการกำหนดค่าต่ำสุดที่ 1e-16
         err_vals_clipped = np.maximum(err_vals, 1e-16)
 
-        # พล็อตเส้น Error จริงจากการคูณ Power Iteration
         ax_err.semilogy(
             k_vals,
             err_vals_clipped,
@@ -619,7 +543,6 @@ with bot_col2:
             label=r"Actual Error $\|\vec{x}_k - \vec{\pi}\|_2$"
         )
 
-        # พล็อตเส้นแนวโน้มทางทฤษฎี |λ_2|^k (ทั้งแบบปรับสเกลด้วย Error เริ่มต้น e_0 * |λ_2|^k และ |λ_2|^k บริสุทธิ์)
         max_k_plot = max(int(k_vals[-1]), 15)
         k_theo = np.arange(0, max_k_plot + 1)
         if lam2_abs > 1e-12:
@@ -701,7 +624,6 @@ with tab_G:
     st.dataframe(df_G.style.format("{:.4f}"), use_container_width=True)
 
 with tab_eig:
-    # เรียงลำดับ Eigenvalues ตามขนาด |λ| จากมากไปน้อยเพื่อแสดงในตาราง
     order_idx = np.argsort(np.abs(eigvals))[::-1]
     eig_sorted = eigvals[order_idx]
     df_eig = pd.DataFrame({
@@ -719,3 +641,4 @@ with tab_eig:
         use_container_width=True
     )
 
+    
