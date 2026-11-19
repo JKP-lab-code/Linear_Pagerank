@@ -394,7 +394,7 @@ st.caption(
     f" "
     f""
 )
- uv run --with networkx,matplotlib,streamlit,scipy streamlit run app.py
+
 # แถวบน: (1) กราฟโครงข่าย [M1, M7] และ (2) ตารางเปรียบเทียบอันดับ [M7]
 top_col1, top_col2 = st.columns([1.15, 1.0], gap="medium")
 
@@ -719,4 +719,3 @@ with tab_eig:
         use_container_width=True
     )
 
-    
